@@ -30,6 +30,9 @@ import { NotebookDto } from 'vs/workbench/api/browser/mainThreadNotebookDto';
 import { ILineChange } from 'vs/editor/common/diff/diffComputer';
 import { IExtHostContext } from 'vs/workbench/services/extensions/common/extHostCustomers';
 import { IEditorPane } from 'vs/workbench/common/editor';
+import { ITextEditorDragAndDropService } from 'vs/workbench/contrib/dnd/browser/dndService';
+import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
+import { TextEditorDataTransferConverter } from 'vs/workbench/api/common/shared/textEditorDataTransfer';
 
 export function reviveWorkspaceEditDto2(data: IWorkspaceEditDto | undefined): ResourceEdit[] {
 	if (!data?.edits) {
@@ -71,7 +74,8 @@ export class MainThreadTextEditors implements MainThreadTextEditorsShape {
 		@ICodeEditorService private readonly _codeEditorService: ICodeEditorService,
 		@IBulkEditService private readonly _bulkEditService: IBulkEditService,
 		@IEditorService private readonly _editorService: IEditorService,
-		@IEditorGroupsService private readonly _editorGroupService: IEditorGroupsService
+		@IEditorGroupsService private readonly _editorGroupService: IEditorGroupsService,
+		@ITextEditorDragAndDropService private readonly _textEditorDragAndDropService: ITextEditorDragAndDropService
 	) {
 		this._instanceId = String(++MainThreadTextEditors.INSTANCE_COUNT);
 		this._proxy = extHostContext.getProxy(ExtHostContext.ExtHostEditors);
@@ -82,6 +86,18 @@ export class MainThreadTextEditors implements MainThreadTextEditorsShape {
 		this._toDispose.add(this._editorService.onDidVisibleEditorsChange(() => this._updateActiveAndVisibleTextEditors()));
 		this._toDispose.add(this._editorGroupService.onDidRemoveGroup(() => this._updateActiveAndVisibleTextEditors()));
 		this._toDispose.add(this._editorGroupService.onDidMoveGroup(() => this._updateActiveAndVisibleTextEditors()));
+
+		this._toDispose.add(this._textEditorDragAndDropService.registerTextEditorDragAndDropController({
+			handleDrop: async (editor: ICodeEditor, position, dataTransfer, token): Promise<void> => {
+				const id = this._documentsAndEditors.findTextEditorIdFor(editor);
+				if (typeof id !== 'string') {
+					return;
+				}
+
+				const dataTransferDto = await TextEditorDataTransferConverter.toTextEditorDataTransferDTO(dataTransfer);
+				return this._proxy.$textEditorHandleDrop(id, position, dataTransferDto, token);
+			}
+		}));
 
 		this._registeredDecorationTypes = Object.create(null);
 	}

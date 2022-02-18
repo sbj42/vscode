@@ -2393,6 +2393,29 @@ export class DataTransfer<T extends DataTransferItem = DataTransferItem> {
 	}
 }
 
+@es5ClassCompat
+export class TextEditorDataTransferItem {
+	async asString(): Promise<string> {
+		return typeof this.value === 'string' ? this.value : JSON.stringify(this.value);
+	}
+
+	constructor(public readonly value: any) { }
+}
+
+@es5ClassCompat
+export class TextEditorDataTransfer<T extends TextEditorDataTransferItem = TextEditorDataTransferItem> {
+	private readonly _items: Map<string, T> = new Map();
+	get(mimeType: string): T | undefined {
+		return this._items.get(mimeType);
+	}
+	set(mimeType: string, value: T): void {
+		this._items.set(mimeType, value);
+	}
+	forEach(callbackfn: (value: T, key: string) => void): void {
+		this._items.forEach(callbackfn);
+	}
+}
+
 
 @es5ClassCompat
 export class ThemeIcon {

@@ -883,8 +883,9 @@ export class EditorPart extends Part implements IEditorGroupsService, IEditorGro
 	private setupDragAndDropSupport(parent: HTMLElement, container: HTMLElement): void {
 
 		// Editor drop target
-		this._register(this.createEditorDropTarget(container, Object.create(null)));
+		// this._register(this.createEditorDropTarget(container, Object.create(null)));
 
+		return; // TODO: fix this :)
 		// No drop in the editor
 		const overlay = document.createElement('div');
 		overlay.classList.add('drop-block-overlay');

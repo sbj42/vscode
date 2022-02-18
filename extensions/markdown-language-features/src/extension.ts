@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import path = require('path');
 import * as vscode from 'vscode';
 import { CommandManager } from './commandManager';
 import * as commands from './commands/index';
@@ -44,6 +45,43 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(() => {
 		logger.updateConfiguration();
 		previewManager.updateConfiguration();
+	}));
+
+	context.subscriptions.push(vscode.window.registerTextEditorDragAndDropController({ language: 'markdown' }, {
+		handleDrop: async (editor: vscode.TextEditor, position: vscode.Position, source: vscode.TextEditorDataTransfer<vscode.TextEditorDataTransferItem>, _token: vscode.CancellationToken): Promise<void> => {
+			const resourceUrls = await source.get('resourceurls')?.asString();
+			if (!resourceUrls) {
+				return;
+			}
+
+			const uris: vscode.Uri[] = [];
+			for (const resource of JSON.parse(resourceUrls)) {
+				try {
+					uris.push(vscode.Uri.parse(resource));
+				} catch {
+					// noop
+				}
+			}
+
+			if (!uris.length) {
+				return;
+			}
+
+			const snippet = new vscode.SnippetString();
+			uris.forEach((uri, i) => {
+				const rel = path.relative(path.dirname(editor.document.uri.fsPath), uri.fsPath);
+
+				snippet.appendText('[');
+				snippet.appendTabstop();
+				snippet.appendText(`](${rel})`);
+
+				if (i <= uris.length - 1) {
+					snippet.appendText(' ');
+				}
+			});
+
+			await editor.insertSnippet(snippet, position);
+		}
 	}));
 }
 

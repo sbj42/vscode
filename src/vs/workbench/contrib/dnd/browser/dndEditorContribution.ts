@@ -42,34 +42,34 @@ export class DndEditorContribution extends Disposable implements IEditorContribu
 				}
 			},
 			onDrop: async e => {
-				if (e.dataTransfer) {
-					const target = this.editor.getTargetAtClientPoint(e.clientX, e.clientY);
-					if (target?.position) {
-						const dataTransfer: ITextEditorDataTransfer = new Map<string, ITextEditorDataTransferItem>();
+				this._removeDecoration();
 
-						const valuePromises: Array<Promise<{ type: string; value: string }>> = [];
-						for (const item of e.dataTransfer.items) {
-							if (item.kind === 'string') {
-								const type = item.type;
-								valuePromises.push(new Promise<{ type: string; value: string }>(resolve => item.getAsString(value => resolve({ type, value }))));
-							}
-						}
+				if (!e.dataTransfer) {
+					return;
+				}
 
-						for (const { type, value } of await Promise.all(valuePromises)) {
+				const target = this.editor.getTargetAtClientPoint(e.clientX, e.clientY);
+				if (target?.position) {
+					const dataTransfer: ITextEditorDataTransfer = new Map<string, ITextEditorDataTransferItem>();
+
+					for (const item of e.dataTransfer.items) {
+						if (item.kind === 'string') {
+							const type = item.type;
+							const asStringValue = new Promise<string>(resolve => item.getAsString(resolve));
 							dataTransfer.set(type, {
-								asString: () => Promise.resolve(value),
+								asString: () => asStringValue,
 								value: undefined
 							});
 						}
+					}
 
+					if (dataTransfer.size > 0) {
 						const controllers = textEditorDragAndDropService.getControllers(this.editor);
 						for (const controller of controllers) {
 							await controller.handleDrop(editor, target.position, dataTransfer, CancellationToken.None); // todo: add cancellation
 						}
-
 					}
 				}
-				this._removeDecoration();
 			},
 			onDragLeave: e => this.dispose(),
 			onDragEnd: e => {

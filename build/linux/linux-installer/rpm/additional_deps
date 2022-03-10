@@ -7,9 +7,6 @@
 # Make sure users have SSL certificates.
 ca-certificates
 
-# Make sure users have compatible fonts for viewing PDFs.
-liberation-fonts
-
 # GTK is dlopen()'ed.  Versions 3 or 4 are supported.
 # TODO(https://crbug.com/876355): RPM 4.13 is required for boolean dependencies,
 # however only 4.12 is available on Ubuntu 16.04.  Depend on GTK3 for now and
@@ -33,8 +30,6 @@ rpmlib(FileDigests) <= 4.6.0-1
 # libvulkan is dlopen()'ed, so must be added as a manual dependency.
 libvulkan.so.1()(64bit)
 
-# For uploading crash reports with Breakpad.
-wget
 # TODO(https://crbug.com/876355): RPM 4.13 is required for boolean dependencies,
 # however only 4.12 is available on Ubuntu 16.04.  Depend on libcurl.so.4 for
 # now and relax the dependency to the below once the bots are upgraded to Ubuntu

@@ -10,9 +10,9 @@ import { calculatePackageDeps, mergePackageDeps } from './linux-installer/rpm/rp
 import { resolve } from 'path';
 import { readFileSync } from 'fs';
 
-export function getRpmDependencies(): string[] {
+export function getRpmDependencies(buildDir: string): string[] {
 	// Get the files for which we want to find dependencies.
-	const findResult = spawnSync('find', ['.', '-name', '*.node']);
+	const findResult = spawnSync('find', [buildDir, '-name', '*.node']);
 	if (findResult.status) {
 		console.error('Error finding files:');
 		console.error(findResult.stderr.toString());
@@ -20,10 +20,21 @@ export function getRpmDependencies(): string[] {
 	}
 
 	// Filter the files and add on the Code binary.
-	const files: string[] = findResult.stdout.toString().split('\n').filter((file) => {
-		return !file.includes('obj.target') && file.includes('build/Release');
-	});
-	files.push('.build/electron/code-oss');
+	// const files: string[] = findResult.stdout.toString().split('\n').filter((file) => {
+	// 	return !file.includes('obj.target') && file.includes('build/Release');
+	// });
+
+	const files = findResult.stdout.toString().split('\n');
+
+	const getAppNameProc = spawnSync('node', ['-p', 'require(\"$APP_ROOT/resources/app/product.json\").applicationName']);
+	if (getAppNameProc.status) {
+		console.error('Error getting app name:');
+		console.error(getAppNameProc.stderr.toString());
+		return [];
+	}
+	const appName = getAppNameProc.stdout.toString();
+	const appPath = `${buildDir}/${appName}`;
+	files.push(appPath);
 
 	// Generate the dependencies.
 	const dependencies: Set<string>[] = files.map((file) => calculatePackageDeps(file));

@@ -9,6 +9,7 @@ import { spawnSync } from 'child_process';
 import { calculatePackageDeps, mergePackageDeps } from './linux-installer/rpm/rpmDependencyScripts';
 import { resolve } from 'path';
 import { readFileSync } from 'fs';
+import { additionalDeps } from './linux-installer/rpm/additionalDeps';
 
 export function getRpmDependencies(buildDir: string): string[] {
 	// Get the files for which we want to find dependencies.
@@ -40,9 +41,8 @@ export function getRpmDependencies(buildDir: string): string[] {
 	// Generate the dependencies.
 	const dependencies: Set<string>[] = files.map((file) => calculatePackageDeps(file));
 
-	// Fetch additional dependencies file.
-	const additionalDeps = readFileSync(resolve(__dirname, 'linux-installer/rpm/additional_deps'));
-	const additionalDepsSet = new Set(additionalDeps.toString('utf-8').trim().split('\n'));
+	// Add additional dependencies.
+	const additionalDepsSet = new Set(additionalDeps);
 	dependencies.push(additionalDepsSet);
 
 	// Merge all the dependencies.

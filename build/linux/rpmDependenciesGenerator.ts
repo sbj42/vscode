@@ -25,8 +25,9 @@ export function getRpmDependencies(buildDir: string): string[] {
 	// });
 
 	const files = findResult.stdout.toString().split('\n');
+	console.log('Found files:\n' + files);
 
-	const getAppNameProc = spawnSync('node', ['-p', 'require(\"$APP_ROOT/resources/app/product.json\").applicationName']);
+	const getAppNameProc = spawnSync('node', ['-p', `require("${buildDir}/resources/app/product.json").applicationName`]);
 	if (getAppNameProc.status) {
 		console.error('Error getting app name:');
 		console.error(getAppNameProc.stderr.toString());

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import 'vs/css!./media/editordroptarget';
-import { LocalSelectionTransfer, DraggedEditorIdentifier, ResourcesDropHandler, DraggedEditorGroupIdentifier, DragAndDropObserver, containsDragType, CodeDataTransfers, DraggedTreeItemsIdentifier, extractTreeDropData } from 'vs/workbench/browser/dnd';
+import { LocalSelectionTransfer, DraggedEditorIdentifier, ResourcesDropHandler, DraggedEditorGroupIdentifier, DragAndDropObserver, containsDragType, CodeDataTransfers, DraggedTreeItemsIdentifier, extractTreeDropData, IDragAndDropObserverCallbacks } from 'vs/workbench/browser/dnd';
 import { addDisposableListener, EventType, EventHelper, isAncestor } from 'vs/base/browser/dom';
 import { IEditorGroupsAccessor, IEditorGroupView, fillActiveEditorViewState } from 'vs/workbench/browser/parts/editor/editor';
 import { EDITOR_DRAG_AND_DROP_BACKGROUND } from 'vs/workbench/common/theme';
@@ -21,6 +21,7 @@ import { IEditorService } from 'vs/workbench/services/editor/common/editorServic
 import { assertIsDefined, assertAllDefined } from 'vs/base/common/types';
 import { ITreeViewsService } from 'vs/workbench/services/views/browser/treeViewsService';
 import { isTemporaryWorkspace, IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
+import { isCodeEditor } from 'vs/editor/browser/editorBrowser';
 
 interface IDropOperation {
 	splitDirection?: GroupDirection;
@@ -45,6 +46,7 @@ class DropOverlay extends Themable {
 	constructor(
 		private accessor: IEditorGroupsAccessor,
 		private groupView: IEditorGroupView,
+		private readonly dropIntoCallbacks: IDragAndDropObserverCallbacks | undefined,
 		@IThemeService themeService: IThemeService,
 		@IInstantiationService private instantiationService: IInstantiationService,
 		@IEditorService private readonly editorService: IEditorService,
@@ -75,7 +77,9 @@ class DropOverlay extends Themable {
 		this.groupView.element.appendChild(container);
 		this.groupView.element.classList.add('dragged-over');
 		this._register(toDisposable(() => {
-			this.groupView.element.removeChild(container);
+			if (container.parentElement) {
+				this.groupView.element.removeChild(container);
+			}
 			this.groupView.element.classList.remove('dragged-over');
 		}));
 
@@ -109,6 +113,26 @@ class DropOverlay extends Themable {
 		this._register(new DragAndDropObserver(container, {
 			onDragEnter: e => undefined,
 			onDragOver: e => {
+				if (e.shiftKey) {
+					if (this.dropIntoCallbacks) {
+						// TODO: Here I'm removing the overlay from the dom so that editor.getTargetAtClientPoint works.
+						// Otherwise the call to `getTargetAtClientPoint` ends up returning the overlay.
+						if (container.parentNode) {
+							container.parentNode.removeChild(container);
+						}
+						// this.hideOverlay();
+						// this.container!.style.display = 'none';
+
+						const control = this.groupView.activeEditorPane?.getControl();
+						if (isCodeEditor(control)) {
+							control.getContainerDomNode().dispatchEvent(new DragEvent(e.type, e));
+						}
+						// this.groupView.drop
+						// this.dropIntoEditorCallbacks.onDragOver?.(e);
+						return;
+					}
+				}
+
 				const isDraggingGroup = this.groupTransfer.hasData(DraggedEditorGroupIdentifier.prototype);
 				const isDraggingEditor = this.editorTransfer.hasData(DraggedEditorIdentifier.prototype);
 
@@ -158,6 +182,15 @@ class DropOverlay extends Themable {
 			onDragEnd: e => this.dispose(),
 
 			onDrop: e => {
+				if (e.shiftKey) {
+					if (this.dropIntoCallbacks) {
+						const control = this.groupView.activeEditorPane?.getControl();
+						if (isCodeEditor(control)) {
+							control.getContainerDomNode().dispatchEvent(new DragEvent(e.type, e));
+						}
+						return;
+					}
+				}
 				EventHelper.stop(e, true);
 
 				// Dispose overlay
@@ -490,7 +523,7 @@ class DropOverlay extends Themable {
 		this.doPositionOverlay({ top: '0', left: '0', width: '100%', height: '100%' });
 		overlay.style.opacity = '0';
 		overlay.classList.remove('overlay-move-transition');
-
+		overlay.style.display = 'none';
 		// Reset current operation
 		this.currentDropOperation = undefined;
 	}
@@ -512,6 +545,11 @@ export interface IEditorDropTargetDelegate {
 	 * A helper to figure out if the drop target contains the provided group.
 	 */
 	containsGroup?(groupView: IEditorGroupView): boolean;
+
+	/**
+	 *
+	 */
+	readonly dropIntoCallbacks?: IDragAndDropObserverCallbacks;
 }
 
 export class EditorDropTarget extends Themable {
@@ -577,7 +615,7 @@ export class EditorDropTarget extends Themable {
 			if (!this.overlay) {
 				const targetGroupView = this.findTargetGroupView(target);
 				if (targetGroupView) {
-					this._overlay = this.instantiationService.createInstance(DropOverlay, this.accessor, targetGroupView);
+					this._overlay = this.instantiationService.createInstance(DropOverlay, this.accessor, targetGroupView, this.delegate.dropIntoCallbacks);
 				}
 			}
 		}

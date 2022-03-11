@@ -35,6 +35,7 @@ export class DndEditorContribution extends Disposable implements IEditorContribu
 		this._register(new DragAndDropObserver(this.editor.getContainerDomNode(), {
 			onDragEnter: e => undefined,
 			onDragOver: e => {
+				console.log('xxxx');
 				// noop
 				const target = this.editor.getTargetAtClientPoint(e.clientX, e.clientY);
 				if (target && target.position) {
@@ -71,11 +72,15 @@ export class DndEditorContribution extends Disposable implements IEditorContribu
 					}
 				}
 			},
-			onDragLeave: e => this.dispose(),
+			onDragLeave: e => { },
 			onDragEnd: e => {
 				this._removeDecoration();
 			},
 		}));
+	}
+	public override dispose(): void {
+		super.dispose();
+		console.log('disspose');
 	}
 
 	private showAt(position: Position): void {

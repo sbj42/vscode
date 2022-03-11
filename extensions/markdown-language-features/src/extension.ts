@@ -48,7 +48,7 @@ export function activate(context: vscode.ExtensionContext) {
 	}));
 
 	context.subscriptions.push(vscode.window.registerTextEditorDragAndDropController({ language: 'markdown' }, {
-		handleDrop: async (editor: vscode.TextEditor, position: vscode.Position, source: vscode.TextEditorDataTransfer<vscode.TextEditorDataTransferItem>, _token: vscode.CancellationToken): Promise<void> => {
+		handleDrop: async (editor: vscode.TextEditor, position: vscode.Position, source: vscode.DataTransfer<vscode.DataTransferItem>, _token: vscode.CancellationToken): Promise<void> => {
 			const resourceUrls = await source.get('resourceurls')?.asString();
 			if (!resourceUrls) {
 				return;

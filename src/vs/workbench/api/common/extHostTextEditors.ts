@@ -14,7 +14,7 @@ import * as vscode from 'vscode';
 import { IExtensionDescription } from 'vs/platform/extensions/common/extensions';
 import { toDisposable } from 'vs/base/common/lifecycle';
 import { score } from 'vs/editor/common/languageSelector';
-import { TextEditorDataTransferConverter, TextEditorDataTransferDTO } from 'vs/workbench/api/common/shared/textEditorDataTransfer';
+import { DataTransferConverter, DataTransferDTO } from 'vs/workbench/api/common/shared/dataTransfer';
 import { CancellationToken } from 'vs/base/common/cancellation';
 import { IPosition } from 'vs/editor/common/core/position';
 
@@ -179,14 +179,14 @@ export class ExtHostEditors implements ExtHostEditorsShape {
 		});
 	}
 
-	async $textEditorHandleDrop(id: string, position: IPosition, dataTransferDto: TextEditorDataTransferDTO, token: CancellationToken): Promise<void> {
+	async $textEditorHandleDrop(id: string, position: IPosition, dataTransferDto: DataTransferDTO, token: CancellationToken): Promise<void> {
 		const textEditor = this._extHostDocumentsAndEditors.getEditor(id);
 		if (!textEditor) {
 			throw new Error('Unknown text editor');
 		}
 
 		const pos = TypeConverters.Position.to(position);
-		const dataTransfer = TextEditorDataTransferConverter.toITextEditorDataTransfer(dataTransferDto);
+		const dataTransfer = DataTransferConverter.toDataTransfer(dataTransferDto);
 
 		for (const { selector, controller } of this._dragAndDropControllers.values()) {
 			const s = score(TypeConverters.LanguageSelector.from(selector), textEditor.value.document.uri, textEditor.value.document.languageId, true, textEditor.value.document.notebook?.notebookType);

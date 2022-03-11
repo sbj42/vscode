@@ -29,10 +29,10 @@ import { ExtensionIdentifier } from 'vs/platform/extensions/common/extensions';
 import { NotebookDto } from 'vs/workbench/api/browser/mainThreadNotebookDto';
 import { ILineChange } from 'vs/editor/common/diff/diffComputer';
 import { IExtHostContext } from 'vs/workbench/services/extensions/common/extHostCustomers';
-import { IEditorPane } from 'vs/workbench/common/editor';
+import { IEditorControl } from 'vs/workbench/common/editor';
 import { ITextEditorDragAndDropService } from 'vs/workbench/contrib/dnd/browser/dndService';
-import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
-import { TextEditorDataTransferConverter } from 'vs/workbench/api/common/shared/textEditorDataTransfer';
+import { ICodeEditor, isCodeEditor } from 'vs/editor/browser/editorBrowser';
+import { DataTransferConverter } from 'vs/workbench/api/common/shared/dataTransfer';
 
 export function reviveWorkspaceEditDto2(data: IWorkspaceEditDto | undefined): ResourceEdit[] {
 	if (!data?.edits) {
@@ -54,7 +54,7 @@ export function reviveWorkspaceEditDto2(data: IWorkspaceEditDto | undefined): Re
 
 export interface IMainThreadEditorLocator {
 	getEditor(id: string): MainThreadTextEditor | undefined;
-	findTextEditorIdFor(editorPane: IEditorPane): string | undefined;
+	findTextEditorIdFor(editorControl: IEditorControl): string | undefined;
 }
 
 export class MainThreadTextEditors implements MainThreadTextEditorsShape {
@@ -89,13 +89,23 @@ export class MainThreadTextEditors implements MainThreadTextEditorsShape {
 
 		this._toDispose.add(this._textEditorDragAndDropService.registerTextEditorDragAndDropController({
 			handleDrop: async (editor: ICodeEditor, position, dataTransfer, token): Promise<void> => {
-				const id = this._documentsAndEditors.findTextEditorIdFor(editor);
-				if (typeof id !== 'string') {
+				for (const pane of this._editorService.visibleEditorPanes) {
+					const control = pane.getControl();
+					if (!isCodeEditor(control)) {
+						continue;
+					}
+
+					if (editor !== control) {
+						continue;
+					}
+
+					const id = this._editorLocator.findTextEditorIdFor(control);
+					if (typeof id === 'string') {
+						const dataTransferDto = await DataTransferConverter.toDataTransferDTO(dataTransfer);
+						return this._proxy.$textEditorHandleDrop(id, position, dataTransferDto, token);
+					}
 					return;
 				}
-
-				const dataTransferDto = await TextEditorDataTransferConverter.toTextEditorDataTransferDTO(dataTransfer);
-				return this._proxy.$textEditorHandleDrop(id, position, dataTransferDto, token);
 			}
 		}));
 

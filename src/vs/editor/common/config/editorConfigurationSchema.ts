@@ -50,6 +50,16 @@ const editorConfiguration: IConfigurationNode = {
 			default: EDITOR_MODEL_DEFAULTS.detectIndentation,
 			markdownDescription: nls.localize('detectIndentation', "Controls whether `#editor.tabSize#` and `#editor.insertSpaces#` will be automatically detected when a file is opened based on the file contents.")
 		},
+		'editor.csvDelimiter': {
+			type: 'number',
+			default: EDITOR_MODEL_DEFAULTS.csvDelimiter,
+			markdownDescription: nls.localize('csvDelimiter', "Controls the delimiter character for table files")
+		},
+		'editor.detectDelimiter': {
+			type: 'boolean',
+			default: EDITOR_MODEL_DEFAULTS.detectDelimiter,
+			markdownDescription: nls.localize('detectDelimiter', "Controls whether `#editor.csvDelimiter#` will be automatically detected when a file is opened based on the file contents.")
+		},
 		'editor.trimAutoWhitespace': {
 			type: 'boolean',
 			default: EDITOR_MODEL_DEFAULTS.trimAutoWhitespace,

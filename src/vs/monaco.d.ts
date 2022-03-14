@@ -1677,6 +1677,7 @@ declare namespace monaco.editor {
 	export class TextModelResolvedOptions {
 		_textModelResolvedOptionsBrand: void;
 		readonly tabSize: number;
+		readonly csvDelimiter: number;
 		readonly indentSize: number;
 		readonly insertSpaces: boolean;
 		readonly defaultEOL: DefaultEndOfLine;
@@ -1690,6 +1691,7 @@ declare namespace monaco.editor {
 
 	export interface ITextModelUpdateOptions {
 		tabSize?: number;
+		csvDelimiter?: number;
 		indentSize?: number;
 		insertSpaces?: boolean;
 		trimAutoWhitespace?: boolean;
@@ -1729,6 +1731,7 @@ declare namespace monaco.editor {
 		 * Get the resolved options for this model.
 		 */
 		getOptions(): TextModelResolvedOptions;
+		getCsvColumns(): number[];
 		/**
 		 * Get the current version id of the model.
 		 * Anytime a change happens to the model (even undo/redo),
@@ -2001,6 +2004,10 @@ declare namespace monaco.editor {
 		 */
 		detectIndentation(defaultInsertSpaces: boolean, defaultTabSize: number): void;
 		/**
+		 * Detect the CSV delimiter for this model from its content.
+		 */
+		detectCsvDelimiter(): void;
+		/**
 		 * Close the current undo-redo element.
 		 * This offers a way to create an undo/redo stop point.
 		 */
@@ -2073,6 +2080,7 @@ declare namespace monaco.editor {
 		 * @event
 		 */
 		readonly onWillDispose: IEvent<void>;
+		readonly onDidChangeCsvColumns: IEvent<void>;
 		/**
 		 * Destroy this model.
 		 */
@@ -2604,6 +2612,7 @@ declare namespace monaco.editor {
 		readonly tabSize: boolean;
 		readonly indentSize: boolean;
 		readonly insertSpaces: boolean;
+		readonly csvDelimiter: boolean;
 		readonly trimAutoWhitespace: boolean;
 	}
 

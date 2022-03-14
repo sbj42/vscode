@@ -10,7 +10,7 @@ import * as errors from 'vs/base/common/errors';
 import { URI } from 'vs/base/common/uri';
 import { EditOperation, ISingleEditOperation } from 'vs/editor/common/core/editOperation';
 import { Range } from 'vs/editor/common/core/range';
-import { DefaultEndOfLine, EndOfLinePreference, EndOfLineSequence, ITextBuffer, ITextBufferFactory, ITextModel, ITextModelCreationOptions } from 'vs/editor/common/model';
+import { DefaultEndOfLine, EndOfLinePreference, EndOfLineSequence, ITextBuffer, ITextBufferFactory, ITextModel, ITextModelCreationOptions, ITextModelUpdateOptions } from 'vs/editor/common/model';
 import { TextModel, createTextBuffer } from 'vs/editor/common/model/textModel';
 import { EDITOR_MODEL_DEFAULTS } from 'vs/editor/common/core/textModelDefaults';
 import { IModelLanguageChangedEvent, IModelContentChangedEvent } from 'vs/editor/common/textModelEvents';
@@ -101,9 +101,11 @@ class ModelData implements IDisposable {
 
 interface IRawEditorConfig {
 	tabSize?: any;
+	csvDelimiter?: any;
 	indentSize?: any;
 	insertSpaces?: any;
 	detectIndentation?: any;
+	detectDelimiter?: any;
 	trimAutoWhitespace?: any;
 	creationOptions?: any;
 	largeFileOptimizations?: any;
@@ -196,6 +198,24 @@ export class ModelService extends Disposable implements IModelService {
 			}
 		}
 
+		let csvDelimiter = EDITOR_MODEL_DEFAULTS.csvDelimiter;
+		if (config.editor && typeof config.editor.csvDelimiter !== 'undefined') {
+			let delimiterStr = String(config.editor.csvDelimiter);
+			const delimiterStrLower = delimiterStr.toLowerCase();
+			if (delimiterStrLower === 'comma') {
+				delimiterStr = ',';
+			}
+			if (delimiterStrLower === 'tab') {
+				delimiterStr = '\t';
+			}
+			if (delimiterStrLower === 'pipe') {
+				delimiterStr = '|';
+			}
+			if (delimiterStr.length === 1) {
+				csvDelimiter = delimiterStr.charCodeAt(0);
+			}
+		}
+
 		let indentSize = tabSize;
 		if (config.editor && typeof config.editor.indentSize !== 'undefined' && config.editor.indentSize !== 'tabSize') {
 			const parsedIndentSize = parseInt(config.editor.indentSize, 10);
@@ -230,6 +250,11 @@ export class ModelService extends Disposable implements IModelService {
 			detectIndentation = (config.editor.detectIndentation === 'false' ? false : Boolean(config.editor.detectIndentation));
 		}
 
+		let detectDelimiter = EDITOR_MODEL_DEFAULTS.detectDelimiter;
+		if (config.editor && typeof config.editor.detectDelimiter !== 'undefined') {
+			detectDelimiter = (config.editor.detectDelimiter === 'false' ? false : Boolean(config.editor.detectDelimiter));
+		}
+
 		let largeFileOptimizations = EDITOR_MODEL_DEFAULTS.largeFileOptimizations;
 		if (config.editor && typeof config.editor.largeFileOptimizations !== 'undefined') {
 			largeFileOptimizations = (config.editor.largeFileOptimizations === 'false' ? false : Boolean(config.editor.largeFileOptimizations));
@@ -244,9 +269,11 @@ export class ModelService extends Disposable implements IModelService {
 		return {
 			isForSimpleWidget: isForSimpleWidget,
 			tabSize: tabSize,
+			csvDelimiter: csvDelimiter,
 			indentSize: indentSize,
 			insertSpaces: insertSpaces,
 			detectIndentation: detectIndentation,
+			detectDelimiter: detectDelimiter,
 			defaultEOL: newDefaultEOL,
 			trimAutoWhitespace: trimAutoWhitespace,
 			largeFileOptimizations: largeFileOptimizations,
@@ -308,6 +335,7 @@ export class ModelService extends Disposable implements IModelService {
 
 		if (currentOptions
 			&& (currentOptions.detectIndentation === newOptions.detectIndentation)
+			&& (currentOptions.detectDelimiter === newOptions.detectDelimiter)
 			&& (currentOptions.insertSpaces === newOptions.insertSpaces)
 			&& (currentOptions.tabSize === newOptions.tabSize)
 			&& (currentOptions.indentSize === newOptions.indentSize)
@@ -318,21 +346,24 @@ export class ModelService extends Disposable implements IModelService {
 			return;
 		}
 
+		let options: ITextModelUpdateOptions = {
+			trimAutoWhitespace: newOptions.trimAutoWhitespace,
+			bracketColorizationOptions: newOptions.bracketPairColorizationOptions,
+		};
+
 		if (newOptions.detectIndentation) {
 			model.detectIndentation(newOptions.insertSpaces, newOptions.tabSize);
-			model.updateOptions({
-				trimAutoWhitespace: newOptions.trimAutoWhitespace,
-				bracketColorizationOptions: newOptions.bracketPairColorizationOptions
-			});
 		} else {
-			model.updateOptions({
-				insertSpaces: newOptions.insertSpaces,
-				tabSize: newOptions.tabSize,
-				indentSize: newOptions.indentSize,
-				trimAutoWhitespace: newOptions.trimAutoWhitespace,
-				bracketColorizationOptions: newOptions.bracketPairColorizationOptions
-			});
+			options.insertSpaces = newOptions.insertSpaces;
+			options.tabSize = newOptions.tabSize;
+			options.indentSize = newOptions.indentSize;
 		}
+		if (newOptions.detectDelimiter) {
+			model.detectCsvDelimiter();
+		} else {
+			options.csvDelimiter = newOptions.csvDelimiter;
+		}
+		model.updateOptions(options);
 	}
 
 	// --- begin IModelService

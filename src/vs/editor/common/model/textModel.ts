@@ -187,9 +187,11 @@ export class TextModel extends Disposable implements model.ITextModel, IDecorati
 	public static DEFAULT_CREATION_OPTIONS: model.ITextModelCreationOptions = {
 		isForSimpleWidget: false,
 		tabSize: EDITOR_MODEL_DEFAULTS.tabSize,
+		csvDelimiter: EDITOR_MODEL_DEFAULTS.csvDelimiter,
 		indentSize: EDITOR_MODEL_DEFAULTS.indentSize,
 		insertSpaces: EDITOR_MODEL_DEFAULTS.insertSpaces,
 		detectIndentation: false,
+		detectDelimiter: false,
 		defaultEOL: model.DefaultEndOfLine.LF,
 		trimAutoWhitespace: EDITOR_MODEL_DEFAULTS.trimAutoWhitespace,
 		largeFileOptimizations: EDITOR_MODEL_DEFAULTS.largeFileOptimizations,
@@ -197,22 +199,23 @@ export class TextModel extends Disposable implements model.ITextModel, IDecorati
 	};
 
 	public static resolveOptions(textBuffer: model.ITextBuffer, options: model.ITextModelCreationOptions): model.TextModelResolvedOptions {
+		let { tabSize, indentSize, insertSpaces } = options;
+		let { csvDelimiter } = options;
 		if (options.detectIndentation) {
 			const guessedIndentation = guessIndentation(textBuffer, options.tabSize, options.insertSpaces);
-			return new model.TextModelResolvedOptions({
-				tabSize: guessedIndentation.tabSize,
-				indentSize: guessedIndentation.tabSize, // TODO@Alex: guess indentSize independent of tabSize
-				insertSpaces: guessedIndentation.insertSpaces,
-				trimAutoWhitespace: options.trimAutoWhitespace,
-				defaultEOL: options.defaultEOL,
-				bracketPairColorizationOptions: options.bracketPairColorizationOptions,
-			});
+			tabSize = guessedIndentation.tabSize;
+			indentSize = guessedIndentation.tabSize; // TODO@Alex: guess indentSize independent of tabSize
+			insertSpaces = guessedIndentation.insertSpaces;
+		}
+		if (options.detectDelimiter) {
+			csvDelimiter = guessDelimiter(textBuffer);
 		}
 
 		return new model.TextModelResolvedOptions({
-			tabSize: options.tabSize,
-			indentSize: options.indentSize,
-			insertSpaces: options.insertSpaces,
+			tabSize,
+			csvDelimiter,
+			indentSize,
+			insertSpaces,
 			trimAutoWhitespace: options.trimAutoWhitespace,
 			defaultEOL: options.defaultEOL,
 			bracketPairColorizationOptions: options.bracketPairColorizationOptions,
@@ -254,6 +257,9 @@ export class TextModel extends Disposable implements model.ITextModel, IDecorati
 			this._onDidChangeInjectedText.event(e => listener(e))
 		);
 	}
+
+	private readonly _onDidChangeCsvColumns: Emitter<void> = this._register(new Emitter<void>());
+	public readonly onDidChangeCsvColumns: Event<void> = this._onDidChangeCsvColumns.event;
 	//#endregion
 
 	public readonly id: string;
@@ -274,6 +280,8 @@ export class TextModel extends Disposable implements model.ITextModel, IDecorati
 	private _initialUndoRedoSnapshot: ResourceEditStackSnapshot | null;
 	private readonly _isTooLargeForSyncing: boolean;
 	private readonly _isTooLargeForTokenization: boolean;
+
+	private _csvColumns: number[];
 
 	//#region Editing
 	private readonly _commandManager: EditStack;
@@ -399,6 +407,8 @@ export class TextModel extends Disposable implements model.ITextModel, IDecorati
 		this._isUndoing = false;
 		this._isRedoing = false;
 		this._trimAutoWhitespaceLines = null;
+
+		this._csvColumns = calculateCsvColumns(this._buffer, this._options.csvDelimiter);
 
 		this._tokens = new ContiguousTokensStore(this._languageService.languageIdCodec);
 		this._semanticTokens = new SparseTokensStore(this._languageService.languageIdCodec);
@@ -666,6 +676,16 @@ export class TextModel extends Disposable implements model.ITextModel, IDecorati
 		return this._options;
 	}
 
+	public getCsvColumns(): number[] {
+		this._assertNotDisposed();
+		return this._languageId === 'csv' ? this._csvColumns : [];
+	}
+
+	public getCsvDelimiter(): CharCode {
+		this._assertNotDisposed();
+		return this._languageId === 'csv' ? this._options.csvDelimiter : CharCode.Tab;
+	}
+
 	public getFormattingOptions(): FormattingOptions {
 		return {
 			tabSize: this._options.indentSize,
@@ -676,6 +696,7 @@ export class TextModel extends Disposable implements model.ITextModel, IDecorati
 	public updateOptions(_newOpts: model.ITextModelUpdateOptions): void {
 		this._assertNotDisposed();
 		const tabSize = (typeof _newOpts.tabSize !== 'undefined') ? _newOpts.tabSize : this._options.tabSize;
+		const csvDelimiter = (typeof _newOpts.csvDelimiter !== 'undefined') ? _newOpts.csvDelimiter : this._options.csvDelimiter;
 		const indentSize = (typeof _newOpts.indentSize !== 'undefined') ? _newOpts.indentSize : this._options.indentSize;
 		const insertSpaces = (typeof _newOpts.insertSpaces !== 'undefined') ? _newOpts.insertSpaces : this._options.insertSpaces;
 		const trimAutoWhitespace = (typeof _newOpts.trimAutoWhitespace !== 'undefined') ? _newOpts.trimAutoWhitespace : this._options.trimAutoWhitespace;
@@ -683,6 +704,7 @@ export class TextModel extends Disposable implements model.ITextModel, IDecorati
 
 		const newOpts = new model.TextModelResolvedOptions({
 			tabSize: tabSize,
+			csvDelimiter: csvDelimiter,
 			indentSize: indentSize,
 			insertSpaces: insertSpaces,
 			defaultEOL: this._options.defaultEOL,
@@ -709,6 +731,14 @@ export class TextModel extends Disposable implements model.ITextModel, IDecorati
 			insertSpaces: guessedIndentation.insertSpaces,
 			tabSize: guessedIndentation.tabSize,
 			indentSize: guessedIndentation.tabSize, // TODO@Alex: guess indentSize independent of tabSize
+		});
+	}
+
+	public detectCsvDelimiter(): void {
+		this._assertNotDisposed();
+		const guessedDelimiter = guessDelimiter(this._buffer);
+		this.updateOptions({
+			csvDelimiter: guessedDelimiter,
 		});
 	}
 
@@ -1568,6 +1598,22 @@ export class TextModel extends Disposable implements model.ITextModel, IDecorati
 					isFlush: false
 				}
 			);
+
+			const csvColumns = calculateCsvColumns(this._buffer, this._options.csvDelimiter);
+			let same = csvColumns.length === this._csvColumns.length;
+			if (same) {
+				for (let i = 0; i < csvColumns.length; i++) {
+					if (csvColumns[i] !== this._csvColumns[i]) {
+						same = false;
+						break;
+					}
+				}
+			}
+			if (!same) {
+				this._csvColumns = csvColumns;
+				console.info(`CSV COLUMNS: [${csvColumns.join(', ')}]`);
+				this._onDidChangeCsvColumns.fire();
+			}
 		}
 
 		return (result.reverseEdits === null ? undefined : result.reverseEdits);
@@ -2712,4 +2758,112 @@ export class DidChangeContentEmitter extends Disposable {
 		this._fastEmitter.fire(e);
 		this._slowEmitter.fire(e);
 	}
+}
+
+const VALID_DELIMITERS = [CharCode.Tab, CharCode.Comma, CharCode.Pipe];
+
+function guessDelimiter(source: model.ITextBuffer): CharCode {
+	// Look at most at the first 100 lines
+	const linesCount = Math.min(source.getLineCount(), 100);
+
+	const delimiterCounts = VALID_DELIMITERS.map(_ => 0);
+
+	for (let lineNumber = 1; lineNumber <= linesCount; lineNumber++) {
+		const currentLineLength = source.getLineLength(lineNumber);
+		const currentLineText = source.getLineContent(lineNumber);
+
+		// if the text buffer is chunk based, so long lines are cons-string, v8 will flattern the string when we check charCode.
+		// checking charCode on chunks directly is cheaper.
+		const useCurrentLineText = (currentLineLength <= 65536);
+
+		for (let j = 0, lenJ = currentLineLength; j < lenJ; j++) {
+			const charCode = (useCurrentLineText ? currentLineText.charCodeAt(j) : source.getLineCharCode(lineNumber, j));
+
+			const index = VALID_DELIMITERS.indexOf(charCode);
+			if (index >= 0) {
+				delimiterCounts[index]++;
+			}
+		}
+	}
+
+	let delimiter = VALID_DELIMITERS[0];
+	let delimiterCount = delimiterCounts[0];
+
+	for (let d = 1; d < delimiterCounts.length; d++) {
+		if (delimiterCounts[d] > delimiterCount) {
+			delimiter = VALID_DELIMITERS[d];
+			delimiterCount = delimiterCounts[d];
+		}
+	}
+
+	return delimiter;
+}
+
+enum QuoteState {
+	NOT_CSV,
+	AFTER_DELIMITER,
+	IN_QUOTED_VALUE,
+	AFTER_QUOTE,
+	IN_UNQUOTED_VALUE,
+}
+
+function nextQuoteState(quoteState: QuoteState, csvDelimiter: CharCode, charCode: CharCode) {
+	if (quoteState !== QuoteState.NOT_CSV) {
+		if (charCode === csvDelimiter && quoteState !== QuoteState.IN_QUOTED_VALUE) {
+			return QuoteState.AFTER_DELIMITER;
+		} else if (charCode === CharCode.DoubleQuote && quoteState === QuoteState.AFTER_DELIMITER) {
+			return QuoteState.IN_QUOTED_VALUE;
+		} else if (charCode === CharCode.DoubleQuote && quoteState === QuoteState.IN_QUOTED_VALUE) {
+			return QuoteState.AFTER_QUOTE;
+		} else if (charCode === csvDelimiter && quoteState === QuoteState.AFTER_QUOTE) {
+			return QuoteState.IN_QUOTED_VALUE;
+		} else if (quoteState === QuoteState.AFTER_DELIMITER) {
+			return QuoteState.IN_UNQUOTED_VALUE;
+		} else if (quoteState === QuoteState.AFTER_QUOTE) {
+			return QuoteState.IN_QUOTED_VALUE;
+		}
+	}
+	return quoteState;
+}
+
+function calculateCsvColumns(source: model.ITextBuffer, delimiter: CharCode): number[] {
+	// Look at most at the first 100 lines
+	const linesCount = Math.min(source.getLineCount(), 100);
+
+	const columnWidths: number[] = [];
+
+	for (let lineNumber = 1; lineNumber <= linesCount; lineNumber++) {
+		const currentLineLength = source.getLineLength(lineNumber);
+		const currentLineText = source.getLineContent(lineNumber);
+
+		// if the text buffer is chunk based, so long lines are cons-string, v8 will flattern the string when we check charCode.
+		// checking charCode on chunks directly is cheaper.
+		const useCurrentLineText = (currentLineLength <= 65536);
+		let quoteState = QuoteState.AFTER_DELIMITER;
+
+		let currentColumnIndex = 0;
+		let currentColumnWidth = 0;
+		for (let j = 0, lenJ = currentLineLength; j < lenJ; j++) {
+			const charCode = (useCurrentLineText ? currentLineText.charCodeAt(j) : source.getLineCharCode(lineNumber, j));
+
+			if (charCode === delimiter && quoteState !== QuoteState.IN_QUOTED_VALUE) {
+				columnWidths[currentColumnIndex] = Math.max(columnWidths[currentColumnIndex] || 0, currentColumnWidth);
+				currentColumnWidth = 0;
+				currentColumnIndex++;
+			} else {
+				currentColumnWidth++;
+			}
+			quoteState = nextQuoteState(quoteState, delimiter, charCode);
+		}
+		columnWidths[currentColumnIndex] = Math.max(columnWidths[currentColumnIndex] || 0, currentColumnWidth);
+	}
+
+	const csvColumns: number[] = [0];
+	let sum = 0;
+	for (let columnNumber = 0; columnNumber < columnWidths.length - 1; columnNumber++) {
+		sum += columnWidths[columnNumber] + 2;
+		csvColumns.push(sum);
+	}
+
+	return csvColumns;
 }

@@ -105,6 +105,7 @@ export interface IModelOptionsChangedEvent {
 	readonly tabSize: boolean;
 	readonly indentSize: boolean;
 	readonly insertSpaces: boolean;
+	readonly csvDelimiter: boolean;
 	readonly trimAutoWhitespace: boolean;
 }
 

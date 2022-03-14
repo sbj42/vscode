@@ -570,7 +570,7 @@ export class DiffEditorWidget extends Disposable implements editorBrowser.IDiffE
 		}));
 
 		this._register(editor.onDidChangeModelOptions((e) => {
-			if (e.tabSize) {
+			if (e.tabSize || e.csvDelimiter) {
 				this._updateDecorationsRunner.schedule();
 			}
 		}));

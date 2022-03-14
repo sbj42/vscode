@@ -7,6 +7,8 @@ import { extname } from 'vs/base/common/path';
 
 export namespace Mimes {
 	export const text = 'text/plain';
+	export const csv = 'text/csv';
+	export const tsv = 'text/tab-separated-values';
 	export const binary = 'application/octet-stream';
 	export const unknown = 'application/unknown';
 	export const markdown = 'text/markdown';
@@ -21,6 +23,7 @@ interface MapExtToMediaMimes {
 const mapExtToTextMimes: MapExtToMediaMimes = {
 	'.css': 'text/css',
 	'.csv': 'text/csv',
+	'.tsv': 'text/tab-separated-values',
 	'.htm': 'text/html',
 	'.html': 'text/html',
 	'.ics': 'text/calendar',

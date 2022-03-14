@@ -18,12 +18,14 @@ import { createModelLineProjection, IModelLineProjection } from 'vs/editor/commo
 import { ILineBreaksComputer, ModelLineProjectionData, InjectedText, ILineBreaksComputerFactory } from 'vs/editor/common/modelLineProjectionData';
 import { ConstantTimePrefixSumComputer } from 'vs/editor/common/model/prefixSumComputer';
 import { ICoordinatesConverter, ViewLineData } from 'vs/editor/common/viewModel';
+import { CharCode } from 'vs/base/common/charCode';
 
 export interface IViewModelLines extends IDisposable {
 	createCoordinatesConverter(): ICoordinatesConverter;
 
 	setWrappingSettings(fontInfo: FontInfo, wrappingStrategy: 'simple' | 'advanced', wrappingColumn: number, wrappingIndent: WrappingIndent): boolean;
 	setTabSize(newTabSize: number): boolean;
+	setCsvDelimiter(newDelimiter: CharCode): boolean;
 	getHiddenAreas(): Range[];
 	setHiddenAreas(_ranges: Range[]): boolean;
 
@@ -67,6 +69,7 @@ export class ViewModelLinesFromProjectedModel implements IViewModelLines {
 
 	private fontInfo: FontInfo;
 	private tabSize: number;
+	private csvDelimiter: CharCode;
 	private wrappingColumn: number;
 	private wrappingIndent: WrappingIndent;
 	private wrappingStrategy: 'simple' | 'advanced';
@@ -87,6 +90,7 @@ export class ViewModelLinesFromProjectedModel implements IViewModelLines {
 		monospaceLineBreaksComputerFactory: ILineBreaksComputerFactory,
 		fontInfo: FontInfo,
 		tabSize: number,
+		csvDelimiter: CharCode,
 		wrappingStrategy: 'simple' | 'advanced',
 		wrappingColumn: number,
 		wrappingIndent: WrappingIndent,
@@ -98,6 +102,7 @@ export class ViewModelLinesFromProjectedModel implements IViewModelLines {
 		this._monospaceLineBreaksComputerFactory = monospaceLineBreaksComputerFactory;
 		this.fontInfo = fontInfo;
 		this.tabSize = tabSize;
+		this.csvDelimiter = csvDelimiter;
 		this.wrappingStrategy = wrappingStrategy;
 		this.wrappingColumn = wrappingColumn;
 		this.wrappingIndent = wrappingIndent;
@@ -263,6 +268,17 @@ export class ViewModelLinesFromProjectedModel implements IViewModelLines {
 			return false;
 		}
 		this.tabSize = newTabSize;
+
+		this._constructLines(/*resetHiddenAreas*/false, null);
+
+		return true;
+	}
+
+	public setCsvDelimiter(newDelimiter: CharCode): boolean {
+		if (this.csvDelimiter === newDelimiter) {
+			return false;
+		}
+		this.csvDelimiter = newDelimiter;
 
 		this._constructLines(/*resetHiddenAreas*/false, null);
 
@@ -1059,6 +1075,10 @@ export class ViewModelLinesFromModelAsIs implements IViewModelLines {
 	}
 
 	public setTabSize(_newTabSize: number): boolean {
+		return false;
+	}
+
+	public setCsvDelimiter(newDelimiter: CharCode): boolean {
 		return false;
 	}
 

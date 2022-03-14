@@ -91,3 +91,26 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
 			}
 		}
 	}]);
+
+export const CSV_LANGUAGE_ID = 'csv';
+export const CSV_EXTENSION = '.csv';
+export const TSV_EXTENSION = '.tsv';
+export const PSV_EXTENSION = '.psv';
+
+ModesRegistry.registerLanguage({
+	id: CSV_LANGUAGE_ID,
+	extensions: [CSV_EXTENSION, TSV_EXTENSION, PSV_EXTENSION],
+	aliases: [nls.localize('csv.alias', "CSV")],
+	mimetypes: [Mimes.csv, Mimes.tsv]
+});
+
+LanguageConfigurationRegistry.register(CSV_LANGUAGE_ID, {
+	brackets: [],
+	surroundingPairs: [
+		{ open: '\"', close: '\"' },
+	],
+	colorizedBracketPairs: [],
+	folding: {
+		offSide: true
+	}
+}, 0);

@@ -17,6 +17,7 @@ import { EditorTheme } from 'vs/editor/common/editorTheme';
 import { VerticalRevealType } from 'vs/editor/common/viewEvents';
 import { ILineBreaksComputer, InjectedText } from 'vs/editor/common/modelLineProjectionData';
 import { ViewEventHandler } from 'vs/editor/common/viewEventHandler';
+import { CharCode } from 'vs/base/common/charCode';
 
 export interface IViewModel extends ICursorSimpleModel {
 
@@ -315,6 +316,9 @@ export class ViewLineRenderingData {
 	 * The tab size for this view model.
 	 */
 	public readonly tabSize: number;
+
+	public readonly csvColumns: number[];
+	public readonly csvDelimiter: CharCode;
 	/**
 	 * The visible column at the start of the line (after the fauxIndent)
 	 */
@@ -330,6 +334,8 @@ export class ViewLineRenderingData {
 		tokens: IViewLineTokens,
 		inlineDecorations: InlineDecoration[],
 		tabSize: number,
+		csvColumns: number[],
+		csvDelimiter: CharCode,
 		startVisibleColumn: number,
 	) {
 		this.minColumn = minColumn;
@@ -343,6 +349,8 @@ export class ViewLineRenderingData {
 		this.tokens = tokens;
 		this.inlineDecorations = inlineDecorations;
 		this.tabSize = tabSize;
+		this.csvColumns = csvColumns;
+		this.csvDelimiter = csvDelimiter;
 		this.startVisibleColumn = startVisibleColumn;
 	}
 

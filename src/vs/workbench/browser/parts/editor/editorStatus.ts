@@ -54,6 +54,8 @@ import { themeColorFromId } from 'vs/platform/theme/common/themeService';
 import { ITelemetryData, ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { SideBySideEditorInput } from 'vs/workbench/common/editor/sideBySideEditorInput';
 import { AutomaticLanguageDetectionLikelyWrongClassification, AutomaticLanguageDetectionLikelyWrongId, IAutomaticLanguageDetectionLikelyWrongData, ILanguageDetectionService } from 'vs/workbench/services/languageDetection/common/languageDetectionWorkerService';
+import { CharCode } from 'vs/base/common/charCode';
+import { CommaDelimiter, DetectDelimiter, PipeDelimiter, TabDelimiter } from 'vs/editor/contrib/csv/browser/delimiter';
 
 class SideBySideEditorEncodingSupport implements IEncodingSupport {
 	constructor(private primary: IEncodingSupport, private secondary: IEncodingSupport) { }
@@ -141,6 +143,7 @@ interface IEditorSelectionStatus {
 
 class StateChange {
 	indentation: boolean = false;
+	delimiter: boolean = false;
 	selectionStatus: boolean = false;
 	languageId: boolean = false;
 	languageStatus: boolean = false;
@@ -166,6 +169,7 @@ class StateChange {
 
 	hasChanges(): boolean {
 		return this.indentation
+			|| this.delimiter
 			|| this.selectionStatus
 			|| this.languageId
 			|| this.languageStatus
@@ -184,6 +188,7 @@ type StateDelta = (
 	| { type: 'encoding'; encoding: string | undefined }
 	| { type: 'EOL'; EOL: string | undefined }
 	| { type: 'indentation'; indentation: string | undefined }
+	| { type: 'delimiter'; delimiter: string | undefined }
 	| { type: 'tabFocusMode'; tabFocusMode: boolean }
 	| { type: 'columnSelectionMode'; columnSelectionMode: boolean }
 	| { type: 'screenReaderMode'; screenReaderMode: boolean }
@@ -206,6 +211,9 @@ class State {
 
 	private _indentation: string | undefined;
 	get indentation(): string | undefined { return this._indentation; }
+
+	private _delimiter: string | undefined;
+	get delimiter(): string | undefined { return this._delimiter; }
 
 	private _tabFocusMode: boolean | undefined;
 	get tabFocusMode(): boolean | undefined { return this._tabFocusMode; }
@@ -233,6 +241,13 @@ class State {
 			if (this._indentation !== update.indentation) {
 				this._indentation = update.indentation;
 				change.indentation = true;
+			}
+		}
+
+		if (update.type === 'delimiter') {
+			if (this._delimiter !== update.delimiter) {
+				this._delimiter = update.delimiter;
+				change.delimiter = true;
 			}
 		}
 
@@ -302,6 +317,7 @@ export class EditorStatus extends Disposable implements IWorkbenchContribution {
 	private readonly columnSelectionModeElement = this._register(new MutableDisposable<IStatusbarEntryAccessor>());
 	private readonly screenRedearModeElement = this._register(new MutableDisposable<IStatusbarEntryAccessor>());
 	private readonly indentationElement = this._register(new MutableDisposable<IStatusbarEntryAccessor>());
+	private readonly delimiterElement = this._register(new MutableDisposable<IStatusbarEntryAccessor>());
 	private readonly selectionElement = this._register(new MutableDisposable<IStatusbarEntryAccessor>());
 	private readonly encodingElement = this._register(new MutableDisposable<IStatusbarEntryAccessor>());
 	private readonly eolElement = this._register(new MutableDisposable<IStatusbarEntryAccessor>());
@@ -343,6 +359,7 @@ export class EditorStatus extends Disposable implements IWorkbenchContribution {
 	private registerCommands(): void {
 		CommandsRegistry.registerCommand({ id: 'showEditorScreenReaderNotification', handler: () => this.showScreenReaderNotification() });
 		CommandsRegistry.registerCommand({ id: 'changeEditorIndentation', handler: () => this.showIndentationPicker() });
+		CommandsRegistry.registerCommand({ id: 'changeEditorDelimiter', handler: () => this.showDelimiterPicker() });
 	}
 
 	private showScreenReaderNotification(): void {
@@ -399,6 +416,37 @@ export class EditorStatus extends Disposable implements IWorkbenchContribution {
 
 		picks.splice(3, 0, { type: 'separator', label: localize('indentConvert', "convert file") });
 		picks.unshift({ type: 'separator', label: localize('indentView', "change view") });
+
+		const action = await this.quickInputService.pick(picks, { placeHolder: localize('pickAction', "Select Action"), matchOnDetail: true });
+		return action?.run();
+	}
+
+	private async showDelimiterPicker(): Promise<unknown> {
+		const activeTextEditorControl = getCodeEditor(this.editorService.activeTextEditorControl);
+		if (!activeTextEditorControl) {
+			return this.quickInputService.pick([{ label: localize('noEditor', "No text editor active at this time") }]);
+		}
+
+		if (this.editorService.activeEditor?.hasCapability(EditorInputCapabilities.Readonly)) {
+			return this.quickInputService.pick([{ label: localize('noWritableCodeEditor', "The active code editor is read-only.") }]);
+		}
+
+		const picks: QuickPickInput<IQuickPickItem & { run(): void }>[] = [
+			activeTextEditorControl.getAction(CommaDelimiter.ID),
+			activeTextEditorControl.getAction(TabDelimiter.ID),
+			activeTextEditorControl.getAction(PipeDelimiter.ID),
+			activeTextEditorControl.getAction(DetectDelimiter.ID),
+		].map((a: IEditorAction) => {
+			return {
+				id: a.id,
+				label: a.label,
+				detail: (Language.isDefaultVariant() || a.label === a.alias) ? undefined : a.alias,
+				run: () => {
+					activeTextEditorControl.focus();
+					a.run();
+				}
+			};
+		});
 
 		const action = await this.quickInputService.pick(picks, { placeHolder: localize('pickAction', "Select Action"), matchOnDetail: true });
 		return action?.run();
@@ -492,6 +540,23 @@ export class EditorStatus extends Disposable implements IWorkbenchContribution {
 		};
 
 		this.updateElement(this.indentationElement, props, 'status.editor.indentation', StatusbarAlignment.RIGHT, 100.4);
+	}
+
+	private updateDelimiterElement(text: string | undefined): void {
+		if (!text) {
+			this.delimiterElement.clear();
+			return;
+		}
+
+		const props: IStatusbarEntry = {
+			name: localize('status.editor.delimiter', "Editor Delimiter"),
+			text,
+			ariaLabel: text,
+			tooltip: localize('selectDelimiter', "Select Delimiter"),
+			command: 'changeEditorDelimiter'
+		};
+
+		this.updateElement(this.delimiterElement, props, 'status.editor.delimiter', StatusbarAlignment.RIGHT, 100.45);
 	}
 
 	private updateEncodingElement(text: string | undefined): void {
@@ -597,6 +662,7 @@ export class EditorStatus extends Disposable implements IWorkbenchContribution {
 		this.updateColumnSelectionModeElement(!!this.state.columnSelectionMode);
 		this.updateScreenReaderModeElement(!!this.state.screenReaderMode);
 		this.updateIndentationElement(this.state.indentation);
+		this.updateDelimiterElement(this.state.delimiter);
 		this.updateSelectionElement(this.state.selectionStatus);
 		this.updateEncodingElement(this.state.encoding);
 		this.updateEOLElement(this.state.EOL ? this.state.EOL === '\r\n' ? nlsEOLCRLF : nlsEOLLF : undefined);
@@ -641,6 +707,7 @@ export class EditorStatus extends Disposable implements IWorkbenchContribution {
 		this.onEOLChange(activeCodeEditor);
 		this.onEncodingChange(activeEditorPane, activeCodeEditor);
 		this.onIndentationChange(activeCodeEditor);
+		this.onDelimiterChange(activeCodeEditor);
 		this.onMetadataChange(activeEditorPane);
 		this.currentProblemStatus.update(activeCodeEditor);
 
@@ -679,6 +746,7 @@ export class EditorStatus extends Disposable implements IWorkbenchContribution {
 			// Hook Listener for language changes
 			this.activeEditorListeners.add(activeCodeEditor.onDidChangeModelLanguage(() => {
 				this.onLanguageChange(activeCodeEditor, activeInput);
+				this.onDelimiterChange(activeCodeEditor);
 			}));
 
 			// Hook Listener for content changes
@@ -700,6 +768,7 @@ export class EditorStatus extends Disposable implements IWorkbenchContribution {
 			// Hook Listener for content options changes
 			this.activeEditorListeners.add(activeCodeEditor.onDidChangeModelOptions(() => {
 				this.onIndentationChange(activeCodeEditor);
+				this.onDelimiterChange(activeCodeEditor);
 			}));
 		}
 
@@ -759,6 +828,32 @@ export class EditorStatus extends Disposable implements IWorkbenchContribution {
 						? localize('spacesSize', "Spaces: {0}", modelOpts.indentSize)
 						: localize({ key: 'tabSize', comment: ['Tab corresponds to the tab key'] }, "Tab Size: {0}", modelOpts.tabSize)
 				);
+			}
+		}
+
+		this.updateState(update);
+	}
+
+	private onDelimiterChange(editorWidget: ICodeEditor | undefined): void {
+		const update: StateDelta = { type: 'delimiter', delimiter: undefined };
+
+		if (editorWidget) {
+			const model = editorWidget.getModel();
+			if (model) {
+				if (model.getLanguageId() === 'csv') {
+					const modelOpts = model.getOptions();
+					if (modelOpts.csvDelimiter === CharCode.Comma) {
+						update.delimiter = localize('comma', "Comma");
+					} else if (modelOpts.csvDelimiter === CharCode.Tab) {
+						update.delimiter = localize({ key: 'tab', comment: ['Tab corresponds to the tab key'] }, "Tab");
+					} else if (modelOpts.csvDelimiter === CharCode.Pipe) {
+						update.delimiter = localize({ key: 'pipe', comment: ['Pipe corresponds to the pipe key'] }, "Pipe");
+					} else {
+						update.delimiter = localize('other', "Other");
+					}
+				} else {
+					update.delimiter = undefined;
+				}
 			}
 		}
 

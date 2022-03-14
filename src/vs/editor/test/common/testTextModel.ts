@@ -34,6 +34,7 @@ import { PLAINTEXT_LANGUAGE_ID } from 'vs/editor/common/languages/modesRegistry'
 import { ILanguageFeatureDebounceService, LanguageFeatureDebounceService } from 'vs/editor/common/services/languageFeatureDebounce';
 import { ILanguageFeaturesService } from 'vs/editor/common/services/languageFeatures';
 import { LanguageFeaturesService } from 'vs/editor/common/services/languageFeaturesService';
+import { CharCode } from 'vs/base/common/charCode';
 
 class TestTextModel extends TextModel {
 	public registerDisposable(disposable: IDisposable): void {
@@ -49,9 +50,11 @@ export function withEditorModel(text: string[], callback: (model: TextModel) => 
 
 export interface IRelaxedTextModelCreationOptions {
 	tabSize?: number;
+	csvDelimiter?: CharCode;
 	indentSize?: number;
 	insertSpaces?: boolean;
 	detectIndentation?: boolean;
+	detectDelimiter?: boolean;
 	trimAutoWhitespace?: boolean;
 	defaultEOL?: DefaultEndOfLine;
 	isForSimpleWidget?: boolean;
@@ -63,9 +66,11 @@ function resolveOptions(_options: IRelaxedTextModelCreationOptions): ITextModelC
 	const defaultOptions = TextModel.DEFAULT_CREATION_OPTIONS;
 	return {
 		tabSize: (typeof _options.tabSize === 'undefined' ? defaultOptions.tabSize : _options.tabSize),
+		csvDelimiter: (typeof _options.csvDelimiter === 'undefined' ? defaultOptions.csvDelimiter : _options.csvDelimiter),
 		indentSize: (typeof _options.indentSize === 'undefined' ? defaultOptions.indentSize : _options.indentSize),
 		insertSpaces: (typeof _options.insertSpaces === 'undefined' ? defaultOptions.insertSpaces : _options.insertSpaces),
 		detectIndentation: (typeof _options.detectIndentation === 'undefined' ? defaultOptions.detectIndentation : _options.detectIndentation),
+		detectDelimiter: (typeof _options.detectDelimiter === 'undefined' ? defaultOptions.detectDelimiter : _options.detectDelimiter),
 		trimAutoWhitespace: (typeof _options.trimAutoWhitespace === 'undefined' ? defaultOptions.trimAutoWhitespace : _options.trimAutoWhitespace),
 		defaultEOL: (typeof _options.defaultEOL === 'undefined' ? defaultOptions.defaultEOL : _options.defaultEOL),
 		isForSimpleWidget: (typeof _options.isForSimpleWidget === 'undefined' ? defaultOptions.isForSimpleWidget : _options.isForSimpleWidget),

@@ -419,6 +419,7 @@ export class TextModelResolvedOptions {
 	_textModelResolvedOptionsBrand: void = undefined;
 
 	readonly tabSize: number;
+	readonly csvDelimiter: number;
 	readonly indentSize: number;
 	readonly insertSpaces: boolean;
 	readonly defaultEOL: DefaultEndOfLine;
@@ -430,6 +431,7 @@ export class TextModelResolvedOptions {
 	 */
 	constructor(src: {
 		tabSize: number;
+		csvDelimiter: number;
 		indentSize: number;
 		insertSpaces: boolean;
 		defaultEOL: DefaultEndOfLine;
@@ -437,6 +439,7 @@ export class TextModelResolvedOptions {
 		bracketPairColorizationOptions: BracketPairColorizationOptions;
 	}) {
 		this.tabSize = Math.max(1, src.tabSize | 0);
+		this.csvDelimiter = src.csvDelimiter | 0;
 		this.indentSize = src.tabSize | 0;
 		this.insertSpaces = Boolean(src.insertSpaces);
 		this.defaultEOL = src.defaultEOL | 0;
@@ -452,6 +455,7 @@ export class TextModelResolvedOptions {
 			this.tabSize === other.tabSize
 			&& this.indentSize === other.indentSize
 			&& this.insertSpaces === other.insertSpaces
+			&& this.csvDelimiter === other.csvDelimiter
 			&& this.defaultEOL === other.defaultEOL
 			&& this.trimAutoWhitespace === other.trimAutoWhitespace
 			&& equals(this.bracketPairColorizationOptions, other.bracketPairColorizationOptions)
@@ -466,6 +470,7 @@ export class TextModelResolvedOptions {
 			tabSize: this.tabSize !== newOpts.tabSize,
 			indentSize: this.indentSize !== newOpts.indentSize,
 			insertSpaces: this.insertSpaces !== newOpts.insertSpaces,
+			csvDelimiter: this.csvDelimiter !== newOpts.csvDelimiter,
 			trimAutoWhitespace: this.trimAutoWhitespace !== newOpts.trimAutoWhitespace,
 		};
 	}
@@ -476,9 +481,11 @@ export class TextModelResolvedOptions {
  */
 export interface ITextModelCreationOptions {
 	tabSize: number;
+	csvDelimiter: number;
 	indentSize: number;
 	insertSpaces: boolean;
 	detectIndentation: boolean;
+	detectDelimiter: boolean;
 	trimAutoWhitespace: boolean;
 	defaultEOL: DefaultEndOfLine;
 	isForSimpleWidget: boolean;
@@ -492,6 +499,7 @@ export interface BracketPairColorizationOptions {
 
 export interface ITextModelUpdateOptions {
 	tabSize?: number;
+	csvDelimiter?: number;
 	indentSize?: number;
 	insertSpaces?: boolean;
 	trimAutoWhitespace?: boolean;
@@ -586,6 +594,8 @@ export interface ITextModel {
 	 * Get the resolved options for this model.
 	 */
 	getOptions(): TextModelResolvedOptions;
+
+	getCsvColumns(): number[];
 
 	/**
 	 * Get the formatting options for this model.
@@ -1067,6 +1077,11 @@ export interface ITextModel {
 	detectIndentation(defaultInsertSpaces: boolean, defaultTabSize: number): void;
 
 	/**
+	 * Detect the CSV delimiter for this model from its content.
+	 */
+	detectCsvDelimiter(): void;
+
+	/**
 	 * Close the current undo-redo element.
 	 * This offers a way to create an undo/redo stop point.
 	 */
@@ -1194,6 +1209,7 @@ export interface ITextModel {
 	 * @event
 	 */
 	readonly onWillDispose: Event<void>;
+	readonly onDidChangeCsvColumns: Event<void>;
 
 	/**
 	 * Destroy this model.

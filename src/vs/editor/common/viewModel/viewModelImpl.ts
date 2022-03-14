@@ -38,6 +38,7 @@ import { ViewModelDecorations } from 'vs/editor/common/viewModel/viewModelDecora
 import { FocusChangedEvent, OutgoingViewModelEvent, ReadOnlyEditAttemptEvent, ScrollChangedEvent, ViewModelEventDispatcher, ViewModelEventsCollector, ViewZonesChangedEvent } from 'vs/editor/common/viewModelEventDispatcher';
 import { IViewModelLines, ViewModelLinesFromModelAsIs, ViewModelLinesFromProjectedModel } from 'vs/editor/common/viewModel/viewModelLines';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
+import { CharCode } from 'vs/base/common/charCode';
 
 const USE_IDENTITY_LINES_COLLECTION = true;
 
@@ -104,6 +105,7 @@ export class ViewModel extends Disposable implements IViewModel {
 				monospaceLineBreaksComputerFactory,
 				fontInfo,
 				this.model.getOptions().tabSize,
+				this.model.getOptions().csvDelimiter,
 				wrappingStrategy,
 				wrappingInfo.wrappingColumn,
 				wrappingIndent
@@ -429,8 +431,8 @@ export class ViewModel extends Disposable implements IViewModel {
 		}));
 
 		this._register(this.model.onDidChangeOptions((e) => {
-			// A tab size change causes a line mapping changed event => all view parts will repaint OK, no further event needed here
-			if (this._lines.setTabSize(this.model.getOptions().tabSize)) {
+			// A tab size or delimiter change causes a line mapping changed event => all view parts will repaint OK, no further event needed here
+			if (this._lines.setTabSize(this.model.getOptions().tabSize) || this._lines.setCsvDelimiter(this.model.getOptions().csvDelimiter)) {
 				try {
 					const eventsCollector = this._eventDispatcher.beginEmitViewEvents();
 					eventsCollector.emitViewEvent(new viewEvents.ViewFlushedEvent());
@@ -452,6 +454,21 @@ export class ViewModel extends Disposable implements IViewModel {
 		this._register(this.model.onDidChangeDecorations((e) => {
 			this._decorations.onModelDecorationsChanged();
 			this._eventDispatcher.emitSingleViewEvent(new viewEvents.ViewDecorationsChangedEvent(e));
+		}));
+
+		this._register(this.model.onDidChangeCsvColumns((e) => {
+			try {
+				const eventsCollector = this._eventDispatcher.beginEmitViewEvents();
+				eventsCollector.emitViewEvent(new viewEvents.ViewFlushedEvent());
+				eventsCollector.emitViewEvent(new viewEvents.ViewLineMappingChangedEvent());
+				eventsCollector.emitViewEvent(new viewEvents.ViewDecorationsChangedEvent(null));
+				this._cursor.onLineMappingChanged(eventsCollector);
+				this._decorations.onLineMappingChanged();
+				this.viewLayout.onFlushed(this.getLineCount());
+			} finally {
+				this._eventDispatcher.endEmitViewEvents();
+			}
+			this._updateConfigurationViewLineCount.schedule();
 		}));
 	}
 
@@ -606,6 +623,17 @@ export class ViewModel extends Disposable implements IViewModel {
 		return this.model.getOptions().tabSize;
 	}
 
+	private getCsvColumns(): number[] {
+		return this.model.getCsvColumns();
+	}
+
+	private getCsvDelimiter(): CharCode {
+		if (this.model.getLanguageId() !== 'csv') {
+			return CharCode.Tab;
+		}
+		return this.model.getOptions().csvDelimiter;
+	}
+
 	public getLineCount(): number {
 		return this._lines.getViewLineCount();
 	}
@@ -678,6 +706,8 @@ export class ViewModel extends Disposable implements IViewModel {
 		const mightContainRTL = this.model.mightContainRTL();
 		const mightContainNonBasicASCII = this.model.mightContainNonBasicASCII();
 		const tabSize = this.getTabSize();
+		const csvColumns = this.getCsvColumns();
+		const csvDelimiter = this.getCsvDelimiter();
 		const lineData = this._lines.getViewLineData(lineNumber);
 		const allInlineDecorations = this._decorations.getDecorationsViewportData(visibleRange).inlineDecorations;
 		let inlineDecorations = allInlineDecorations[lineNumber - visibleRange.startLineNumber];
@@ -701,6 +731,8 @@ export class ViewModel extends Disposable implements IViewModel {
 			lineData.tokens,
 			inlineDecorations,
 			tabSize,
+			csvColumns,
+			csvDelimiter,
 			lineData.startVisibleColumn
 		);
 	}

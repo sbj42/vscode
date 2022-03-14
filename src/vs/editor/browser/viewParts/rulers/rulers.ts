@@ -47,6 +47,9 @@ export class Rulers extends ViewPart {
 	public override onScrollChanged(e: viewEvents.ViewScrollChangedEvent): boolean {
 		return e.scrollHeightChanged;
 	}
+	public override onFlushed(e: viewEvents.ViewFlushedEvent): boolean {
+		return true;
+	}
 
 	// --- end event handlers
 
@@ -56,7 +59,12 @@ export class Rulers extends ViewPart {
 
 	private _ensureRulersCount(): void {
 		const currentCount = this._renderedRulers.length;
-		const desiredCount = this._rulers.length;
+		let desiredCount = this._rulers.length;
+
+		const csvColumns = this._context.viewModel.model.getCsvColumns();
+		if (csvColumns.length) {
+			desiredCount = csvColumns.length;
+		}
 
 		if (currentCount === desiredCount) {
 			// Nothing to do
@@ -90,9 +98,18 @@ export class Rulers extends ViewPart {
 
 		this._ensureRulersCount();
 
-		for (let i = 0, len = this._rulers.length; i < len; i++) {
+		let rulers = this._rulers;
+		const csvColumns = this._context.viewModel.model.getCsvColumns();
+		if (csvColumns.length) {
+			rulers = csvColumns.map(column => ({
+				column,
+				color: null
+			}));
+		}
+
+		for (let i = 0, len = rulers.length; i < len; i++) {
 			const node = this._renderedRulers[i];
-			const ruler = this._rulers[i];
+			const ruler = rulers[i];
 
 			node.setBoxShadow(ruler.color ? `1px 0 0 0 ${ruler.color} inset` : ``);
 			node.setHeight(Math.min(ctx.scrollHeight, 1000000));

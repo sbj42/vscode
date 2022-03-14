@@ -87,6 +87,8 @@ export class RenderLineInput {
 	public readonly lineTokens: IViewLineTokens;
 	public readonly lineDecorations: LineDecoration[];
 	public readonly tabSize: number;
+	public readonly csvColumns: number[];
+	public readonly csvDelimiter: CharCode;
 	public readonly startVisibleColumn: number;
 	public readonly spaceWidth: number;
 	public readonly renderSpaceWidth: number;
@@ -121,7 +123,9 @@ export class RenderLineInput {
 		renderWhitespace: 'none' | 'boundary' | 'selection' | 'trailing' | 'all',
 		renderControlCharacters: boolean,
 		fontLigatures: boolean,
-		selectionsOnLine: LineRange[] | null
+		selectionsOnLine: LineRange[] | null,
+		csvColumns: number[] = [],
+		csvDelimiter: CharCode = CharCode.Tab
 	) {
 		this.useMonospaceOptimizations = useMonospaceOptimizations;
 		this.canUseHalfwidthRightwardsArrow = canUseHalfwidthRightwardsArrow;
@@ -133,6 +137,8 @@ export class RenderLineInput {
 		this.lineTokens = lineTokens;
 		this.lineDecorations = lineDecorations.sort(LineDecoration.compare);
 		this.tabSize = tabSize;
+		this.csvColumns = csvColumns;
+		this.csvDelimiter = csvDelimiter;
 		this.startVisibleColumn = startVisibleColumn;
 		this.spaceWidth = spaceWidth;
 		this.stopRenderingLineAfter = stopRenderingLineAfter;
@@ -448,6 +454,8 @@ class ResolvedRenderLineInput {
 		public readonly containsForeignElements: ForeignElementType,
 		public readonly fauxIndentLength: number,
 		public readonly tabSize: number,
+		public readonly csvColumns: number[],
+		public readonly csvDelimiter: CharCode,
 		public readonly startVisibleColumn: number,
 		public readonly containsRTL: boolean,
 		public readonly spaceWidth: number,
@@ -516,6 +524,8 @@ function resolveRenderLineInput(input: RenderLineInput): ResolvedRenderLineInput
 		containsForeignElements,
 		input.fauxIndentLength,
 		input.tabSize,
+		input.csvColumns,
+		input.csvDelimiter,
 		input.startVisibleColumn,
 		input.containsRTL,
 		input.spaceWidth,
@@ -902,6 +912,42 @@ function _applyInlineDecorations(lineContent: string, len: number, tokens: LineP
 	return result;
 }
 
+function _charactersToNextTabStop(csvColumns: number[], tabSize: number, visibleColumn: number) {
+	const nextCsvColumn = csvColumns.find(stop => visibleColumn < stop);
+	if (nextCsvColumn) {
+		return nextCsvColumn - visibleColumn;
+	} else {
+		return (tabSize - (visibleColumn % tabSize));
+	}
+}
+
+enum QuoteState {
+	NOT_CSV,
+	AFTER_DELIMITER,
+	IN_QUOTED_VALUE,
+	AFTER_QUOTE,
+	IN_UNQUOTED_VALUE,
+}
+
+function nextQuoteState(quoteState: QuoteState, csvDelimiter: CharCode, charCode: CharCode) {
+	if (quoteState !== QuoteState.NOT_CSV) {
+		if (charCode === csvDelimiter && quoteState !== QuoteState.IN_QUOTED_VALUE) {
+			return QuoteState.AFTER_DELIMITER;
+		} else if (charCode === CharCode.DoubleQuote && quoteState === QuoteState.AFTER_DELIMITER) {
+			return QuoteState.IN_QUOTED_VALUE;
+		} else if (charCode === CharCode.DoubleQuote && quoteState === QuoteState.IN_QUOTED_VALUE) {
+			return QuoteState.AFTER_QUOTE;
+		} else if (charCode === csvDelimiter && quoteState === QuoteState.AFTER_QUOTE) {
+			return QuoteState.IN_QUOTED_VALUE;
+		} else if (quoteState === QuoteState.AFTER_DELIMITER) {
+			return QuoteState.IN_UNQUOTED_VALUE;
+		} else if (quoteState === QuoteState.AFTER_QUOTE) {
+			return QuoteState.IN_QUOTED_VALUE;
+		}
+	}
+	return quoteState;
+}
+
 /**
  * This function is on purpose not split up into multiple functions to allow runtime type inference (i.e. performance reasons).
  * Notice how all the needed data is fully resolved and passed in (i.e. no other calls).
@@ -916,6 +962,8 @@ function _renderLine(input: ResolvedRenderLineInput, sb: IStringBuilder): Render
 	const parts = input.parts;
 	const fauxIndentLength = input.fauxIndentLength;
 	const tabSize = input.tabSize;
+	const csvColumns = input.csvColumns;
+	const csvDelimiter = input.csvDelimiter;
 	const startVisibleColumn = input.startVisibleColumn;
 	const containsRTL = input.containsRTL;
 	const spaceWidth = input.spaceWidth;
@@ -929,6 +977,7 @@ function _renderLine(input: ResolvedRenderLineInput, sb: IStringBuilder): Render
 	let charIndex = 0;
 	let visibleColumn = startVisibleColumn;
 	let charOffsetInPart = 0;
+	let quoteState = csvColumns.length ? QuoteState.AFTER_DELIMITER : QuoteState.NOT_CSV;
 
 	let partDisplacement = 0;
 	let prevPartContentCnt = 0;
@@ -964,7 +1013,11 @@ function _renderLine(input: ResolvedRenderLineInput, sb: IStringBuilder): Render
 
 				for (; _charIndex < partEndIndex; _charIndex++) {
 					const charCode = lineContent.charCodeAt(_charIndex);
-					const charWidth = (charCode === CharCode.Tab ? (tabSize - (_visibleColumn % tabSize)) : 1) | 0;
+					let charWidth = 1;
+					if (charCode === csvDelimiter && quoteState !== QuoteState.IN_QUOTED_VALUE) {
+						charWidth = _charactersToNextTabStop(csvColumns, tabSize, _visibleColumn);
+					}
+					quoteState = nextQuoteState(quoteState, csvDelimiter, charCode);
 					partContentCnt += charWidth;
 					if (_charIndex >= fauxIndentLength) {
 						_visibleColumn += charWidth;
@@ -983,10 +1036,13 @@ function _renderLine(input: ResolvedRenderLineInput, sb: IStringBuilder): Render
 				characterMapping.setColumnInfo(charIndex + 1, partIndex - partDisplacement, charOffsetInPart, partAbsoluteOffset);
 				partDisplacement = 0;
 				const charCode = lineContent.charCodeAt(charIndex);
-				let charWidth: number;
+				let charWidth = 1;
+				if (charCode === csvDelimiter && quoteState !== QuoteState.IN_QUOTED_VALUE) {
+					charWidth = _charactersToNextTabStop(csvColumns, tabSize, visibleColumn);
+				}
+				quoteState = nextQuoteState(quoteState, csvDelimiter, charCode);
 
 				if (charCode === CharCode.Tab) {
-					charWidth = (tabSize - (visibleColumn % tabSize)) | 0;
 
 					if (!canUseHalfwidthRightwardsArrow || charWidth > 1) {
 						sb.write1(0x2192); // RIGHTWARDS ARROW
@@ -998,7 +1054,6 @@ function _renderLine(input: ResolvedRenderLineInput, sb: IStringBuilder): Render
 					}
 
 				} else { // must be CharCode.Space
-					charWidth = 1;
 
 					sb.write1(renderSpaceCharCode); // &middot; or word separator middle dot
 				}
@@ -1025,12 +1080,30 @@ function _renderLine(input: ResolvedRenderLineInput, sb: IStringBuilder): Render
 				let producedCharacters = 1;
 				let charWidth = 1;
 
+				if (charCode === csvDelimiter && quoteState !== QuoteState.IN_QUOTED_VALUE) {
+					producedCharacters = _charactersToNextTabStop(csvColumns, tabSize, visibleColumn);
+					charWidth = producedCharacters;
+				}
+				quoteState = nextQuoteState(quoteState, csvDelimiter, charCode);
+
 				switch (charCode) {
-					case CharCode.Tab:
-						producedCharacters = (tabSize - (visibleColumn % tabSize));
-						charWidth = producedCharacters;
-						for (let space = 1; space <= producedCharacters; space++) {
+					case csvDelimiter: {
+						if (csvDelimiter === CharCode.Tab) {
 							sb.write1(0xA0); // &nbsp;
+						} else {
+							sb.write1(csvDelimiter);
+						}
+						for (let space = 2; space <= producedCharacters; space++) {
+							sb.write1(0xA0); // &nbsp;
+						}
+						break;
+					}
+
+					case CharCode.Tab:
+						if (!canUseHalfwidthRightwardsArrow) {
+							sb.write1(0x2192); // RIGHTWARDS ARROW
+						} else {
+							sb.write1(0xFFEB); // HALFWIDTH RIGHTWARDS ARROW
 						}
 						break;
 
